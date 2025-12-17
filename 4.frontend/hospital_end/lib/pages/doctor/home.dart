@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:hospital_end/utils/models.dart';
 
 enum PageType { current, history }
 
@@ -167,7 +168,6 @@ class ConsultationDetail extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // 上部：主诉
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -181,7 +181,6 @@ class ConsultationDetail extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          // 下部：表单
           Expanded(child: DiagnosisForm(onSubmit: onSubmit)),
         ],
       ),
@@ -319,13 +318,4 @@ class _HistoryConsultationPageState extends State<HistoryConsultationPage> {
       ],
     );
   }
-}
-
-// ================= Model =================
-class Patient {
-  final String name;
-  final int age;
-  final String complaint;
-
-  Patient(this.name, this.age, this.complaint);
 }

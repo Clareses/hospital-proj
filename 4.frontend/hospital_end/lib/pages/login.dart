@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:hospital_end/pages/admin/home.dart';
 import 'package:hospital_end/utils/global.dart';
 import 'package:hospital_end/pages/doctor/home.dart';
 
@@ -174,7 +175,6 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 24),
 
-                  /// 登录按钮
                   SizedBox(
                     height: 50,
                     child: ElevatedButton(

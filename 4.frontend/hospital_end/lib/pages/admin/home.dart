@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:hospital_end/utils/models.dart';
 
 enum AdminPage { userManage, drugManage }
 
 class AdminHomePage extends StatefulWidget {
-  AdminHomePage({super.key});
+  const AdminHomePage({super.key});
 
   @override
   State<AdminHomePage> createState() => _AdminHomePageState();
@@ -291,20 +292,4 @@ class _DrugManagePageState extends State<DrugManagePage> {
       ),
     );
   }
-}
-
-// ================= Models =================
-class Doctor {
-  final String name;
-  final String phone;
-  final String department;
-
-  Doctor(this.name, this.phone, this.department);
-}
-
-class Drug {
-  final String name;
-  int count;
-
-  Drug(this.name, this.count);
 }
