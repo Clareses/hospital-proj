@@ -1,44 +1,67 @@
 import 'package:flutter/material.dart';
 import 'package:student_end/pages/diag_detail.dart';
+import 'package:student_end/utils/api.dart';
+import 'package:student_end/utils/global.dart';
 import 'package:student_end/utils/record.dart';
 
-class HistoryPage extends StatelessWidget {
-  HistoryPage({super.key});
+class HistoryPage extends StatefulWidget {
+  const HistoryPage({super.key});
 
-  final List<HistoryRecord> demoData = [
-    HistoryRecord(
-      title: '心内科复诊',
-      time: '2025-12-14 14:00',
-      status: 'completed',
-      chiefComplaint: '胸闷气短',
-      diagnosis: '心律不齐',
-      medications: const ['阿司匹林', '美托洛尔'],
-    ),
-    HistoryRecord(
-      title: '肾内科复诊',
-      time: '2025-12-12 10:00',
-      status: 'on_progress',
-      chiefComplaint: '水肿',
-      diagnosis: '慢性肾炎',
-      medications: const ['利尿剂'],
-    ),
-    HistoryRecord(
-      title: '消化内科复诊',
-      time: '2025-11-20 09:00',
-      status: 'cancelled',
-      chiefComplaint: '腹痛',
-      diagnosis: '胃炎',
-      medications: const ['奥美拉唑'],
-    ),
-  ];
+  @override
+  State<HistoryPage> createState() => _HistoryPageState();
+}
+
+class _HistoryPageState extends State<HistoryPage> {
+  late Future<List<HistoryRecord>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _loadHistory();
+  }
+
+  Future<List<HistoryRecord>> _loadHistory() async {
+    final token = Global().token; // 你自己的 token 管理
+    final res = await Api.recordsHistory(token!);
+
+    if (res['status'] != true) {
+      throw Exception(res['msg'] ?? '加载失败');
+    }
+
+    final List list = res['data'];
+    return list.map((e) => HistoryRecord.fromJson(e)).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: demoData.length,
-      itemBuilder: (context, index) {
-        return HistoryItemWidget(record: demoData[index]);
+    return FutureBuilder<List<HistoryRecord>>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              '加载出错：${snapshot.error}',
+              style: const TextStyle(color: Colors.red),
+            ),
+          );
+        }
+
+        final data = snapshot.data!;
+        if (data.isEmpty) {
+          return const Center(child: Text('暂无历史记录'));
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          itemCount: data.length,
+          itemBuilder: (context, index) {
+            return HistoryItemWidget(record: data[index]);
+          },
+        );
       },
     );
   }
@@ -97,7 +120,7 @@ class HistoryItemWidget extends StatelessWidget {
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         title: Text(
-          record.title,
+          record.chiefComplaint,
           style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
         ),
         subtitle: Column(

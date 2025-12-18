@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:student_end/pages/appointment.dart';
 import 'package:student_end/pages/history.dart';
 import 'package:student_end/pages/login.dart';
+import 'package:student_end/utils/api.dart';
 import 'package:student_end/utils/global.dart';
 
 class HomePage extends StatefulWidget {
@@ -14,19 +15,12 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   String _currentTitle = 'Home';
 
-  final ongoingEvent = {
-    'name': '心内科复诊',
-    'time': '2025-12-14 14:00',
-    'department': '心内科',
-    'progress': 0.6,
-  };
-
-  final hospitalTips = """XX 同学：
+  final hospitalTips = """  同学：
     你好！欢迎使用福州大学校医院系统。
     近日温差较大，注意及时添衣保暖。如出现发热、咳嗽等症状，请及时就医。
     校医院将 24 小时守护你的健康。
 
-                                                                联系电话：123456
+    联系电话：123456
 """;
 
   void _onSelect(String title) {
@@ -37,6 +31,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildBody() {
+    final store = Global();
+
     switch (_currentTitle) {
       case 'Home':
         return SingleChildScrollView(
@@ -44,7 +40,7 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              buildCurrentProgress(ongoingEvent),
+              buildCurrentProgress(Api.current(store.token!)),
               const SizedBox(height: 16),
               buildHint(hospitalTips),
             ],
@@ -53,9 +49,11 @@ class _HomePageState extends State<HomePage> {
       case 'History':
         return HistoryPage();
       case 'Appointment':
-        return AppointmentPage();
-      case 'Settings':
-        return const Center(child: Text('Settings Page'));
+        return AppointmentPage(onfinish: () {
+          setState(() {
+            _currentTitle = 'Home';
+          });
+        });
       default:
         return const Center(child: Text('Unknown Page'));
     }
@@ -80,76 +78,145 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Card buildCurrentProgress(Map<String, Object> ongoingEvent) {
+  Widget buildCurrentProgress(Future<Map<String, dynamic>> ongoingFuture) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      color: colorScheme.surface,
-      elevation: 1,
-      margin: const EdgeInsets.only(bottom: 0),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: ongoingEvent.isNotEmpty
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '正在进行',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    ongoingEvent['name']! as String,
-                    style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: colorScheme.onSurface),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '预约时间: ${ongoingEvent['time']} | 科室: ${ongoingEvent['department']}',
-                    style: TextStyle(
-                        fontSize: 15, color: colorScheme.onSurfaceVariant),
-                  ),
-                  const SizedBox(height: 16),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: LinearProgressIndicator(
-                      value: ongoingEvent['progress'] as double,
-                      minHeight: 8,
-                      backgroundColor: colorScheme.surfaceVariant,
-                      color: colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '${((ongoingEvent['progress'] as double) * 100).toInt()}% 完成',
-                    style: TextStyle(
-                        fontSize: 14, color: colorScheme.onSurfaceVariant),
-                  ),
-                ],
-              )
-            : Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  child: Text(
-                    '目前没有正在进行的事件噢',
-                    style: TextStyle(
-                        fontSize: 16, color: colorScheme.onSurfaceVariant),
-                  ),
+    return FutureBuilder<Map<String, dynamic>>(
+      future: ongoingFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Card(
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            color: colorScheme.surface,
+            elevation: 1,
+            margin: const EdgeInsets.only(bottom: 0),
+            child: const Padding(
+              padding: EdgeInsets.all(20),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          );
+        } else if (snapshot.hasError) {
+          return Card(
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            color: colorScheme.surface,
+            elevation: 1,
+            margin: const EdgeInsets.only(bottom: 0),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Center(
+                child: Text(
+                  '加载出错: ${snapshot.error}',
+                  style: TextStyle(color: colorScheme.error),
                 ),
               ),
-      ),
+            ),
+          );
+        }
+
+        final ongoingEvent = snapshot.data!;
+
+        print(ongoingEvent);
+
+        if (ongoingEvent['status'] == false) {
+          return Card(
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            color: colorScheme.surface,
+            elevation: 1,
+            margin: const EdgeInsets.only(bottom: 0),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Center(
+                child: Text(
+                  '目前没有正在进行的事件噢',
+                  style: TextStyle(
+                      fontSize: 16, color: colorScheme.onSurfaceVariant),
+                ),
+              ),
+            ),
+          );
+        }
+
+        double progress = ongoingEvent['progress']! == "pending"
+            ? 0
+            : ongoingEvent['progress'] == "processing"
+                ? 0.5
+                : 1;
+
+        return Card(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          color: colorScheme.surface,
+          elevation: 1,
+          margin: const EdgeInsets.only(bottom: 0),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '正在进行',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  ongoingEvent['overview']! as String,
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurface),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '预约时间: ${ongoingEvent['time']} | 科室: ${ongoingEvent['department']}',
+                  style: TextStyle(
+                      fontSize: 15, color: colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 4,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: LinearProgressIndicator(
+                          value: progress,
+                          minHeight: 8,
+                          backgroundColor: colorScheme.surfaceVariant,
+                          color: colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          ongoingEvent['progress'],
+                          style: TextStyle(
+                              fontSize: 14,
+                              color: colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
   Card buildHint(String hospitalTips) {
     final colorScheme = Theme.of(context).colorScheme;
+
+    final store = Global();
 
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -176,7 +243,7 @@ class _HomePageState extends State<HomePage> {
                 children: [
                   Expanded(
                     child: Text(
-                      hospitalTips,
+                      store.userName! + hospitalTips,
                       style:
                           TextStyle(fontSize: 16, color: colorScheme.onSurface),
                     ),
@@ -219,11 +286,6 @@ class _HomePageState extends State<HomePage> {
             leading: const Icon(Icons.event),
             title: const Text('Appointment'),
             onTap: () => _onSelect('Appointment'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.settings),
-            title: const Text('Settings'),
-            onTap: () => _onSelect('Settings'),
           ),
           const Divider(),
           ListTile(

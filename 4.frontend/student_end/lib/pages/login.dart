@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:student_end/pages/home.dart';
 import 'package:student_end/pages/register.dart';
+import 'package:student_end/utils/api.dart';
 import 'package:student_end/utils/global.dart';
 
 class LoginPage extends StatefulWidget {
@@ -24,12 +25,18 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  /// 假装网络请求
-  Future<bool> _fakeLoginRequest(String phone, String password) async {
-    await Future.delayed(const Duration(seconds: 2));
+  Future<(bool, String, String)> _LoginRequest(
+      String phone, String passwd) async {
+    var ret = await Api.login(phone, passwd);
+    bool status = ret['status'] as bool;
 
-    /// 你可以改成任何逻辑
-    return phone == '13800000000' && password == '123456';
+    if (status == false) {
+      return (false, '', '');
+    }
+
+    String token = ret['token'] as String;
+    String name = ret['name'] as String;
+    return (status, token, name);
   }
 
   Future<void> _onLogin() async {
@@ -43,15 +50,15 @@ class _LoginPageState extends State<LoginPage> {
 
     setState(() => _loading = true);
 
-    final success = await _fakeLoginRequest(phone, password);
+    final (success, tok, name) = await _LoginRequest(phone, password);
 
     setState(() => _loading = false);
 
     if (success) {
       await Global().login(
         userId: phone,
-        userName: phone,
-        token: 'fake_token_${DateTime.now().millisecondsSinceEpoch}',
+        userName: name,
+        token: tok,
       );
 
       _showMessage('登录成功');

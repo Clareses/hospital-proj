@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:student_end/utils/api.dart';
+import 'package:student_end/utils/global.dart';
 
 class AppointmentPage extends StatefulWidget {
-  const AppointmentPage({super.key});
+  final void Function() onfinish;
+
+  const AppointmentPage({super.key, required this.onfinish});
 
   @override
   State<AppointmentPage> createState() => _AppointmentPageState();
@@ -9,25 +13,59 @@ class AppointmentPage extends StatefulWidget {
 
 class _AppointmentPageState extends State<AppointmentPage> {
   final _formKey = GlobalKey<FormState>();
-  String? _selectedDepartment;
   final _chiefComplaintController = TextEditingController();
+
+  List<Map<String, dynamic>> _departments = [];
+  List<Map<String, dynamic>> _doctors = [];
+
+  int? _selectedDepartmentId;
+  int? _selectedDoctorId;
+
   DateTime? _selectedDate;
   int? _selectedHour;
 
-  final List<String> _departments = [
-    '心内科',
-    '消化内科',
-    '肾内科',
-    '耳鼻喉科',
-    '眼科',
-  ];
+  bool _loadingDepartments = true;
+  bool _loadingDoctors = false;
 
-  final List<int> _hours = List.generate(24, (index) => index);
+  final List<int> _hours = List.generate(24, (i) => i);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDepartments();
+  }
 
   @override
   void dispose() {
     _chiefComplaintController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadDepartments() async {
+    try {
+      final data = await Api.departments();
+      setState(() {
+        _departments = data;
+        _loadingDepartments = false;
+      });
+    } catch (_) {
+      setState(() => _loadingDepartments = false);
+    }
+  }
+
+  Future<void> _loadDoctors(int departmentId) async {
+    setState(() {
+      _loadingDoctors = true;
+      _doctors = [];
+      _selectedDoctorId = null;
+    });
+
+    final data = await Api.doctorsByDepartment(departmentId);
+
+    setState(() {
+      _doctors = data;
+      _loadingDoctors = false;
+    });
   }
 
   Future<void> _pickDate() async {
@@ -43,215 +81,148 @@ class _AppointmentPageState extends State<AppointmentPage> {
     }
   }
 
-  void _submit() {
-    if (_formKey.currentState!.validate()) {
-      if (_selectedDate == null || _selectedHour == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('请选择预约时间')),
-        );
-        return;
-      }
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
 
-      final appointmentInfo = '''
-科室: $_selectedDepartment
-主诉: ${_chiefComplaintController.text}
-日期: ${_selectedDate!.toLocal().toString().split(' ')[0]}
-时间: $_selectedHour:00
-''';
-      showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('预约信息'),
-          content: Text(appointmentInfo),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('确定'),
-            ),
-          ],
-        ),
-      );
+    if (_selectedDepartmentId == null ||
+        _selectedDoctorId == null ||
+        _selectedDate == null ||
+        _selectedHour == null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('请完整填写预约信息')));
+      return;
+    }
+
+    final date =
+        '${_selectedDate!.toIso8601String().split("T")[0]} ${_selectedHour!}:00';
+
+    final res = await Api.addRecord(
+      Global().token!,
+      departmentId: _selectedDepartmentId!,
+      doctorId: _selectedDoctorId!,
+      complaint: _chiefComplaintController.text,
+      date: date,
+    );
+
+    if (res['status'] == true) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('预约成功')));
+      widget.onfinish();
+    } else {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('预约失败')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Form(
         key: _formKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 科室选择
-            Text(
-              '选择科室',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: colorScheme.onBackground,
-              ),
-            ),
-            const SizedBox(height: 8),
-            InputDecorator(
-              decoration: InputDecoration(
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                filled: true,
-                fillColor: colorScheme.background,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _selectedDepartment,
-                  hint: const Text('请选择科室'),
-                  isExpanded: true,
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          /// 科室
+          const Text('选择科室', style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          _loadingDepartments
+              ? const Center(child: CircularProgressIndicator())
+              : DropdownButtonFormField<int>(
+                  value: _selectedDepartmentId,
                   items: _departments
                       .map((d) => DropdownMenuItem(
-                            value: d,
-                            child: Text(d),
+                            value: d['id'] as int,
+                            child: Text(d['name']),
                           ))
                       .toList(),
-                  onChanged: (v) => setState(() => _selectedDepartment = v),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // 主诉填写
-            Text(
-              '主诉（请详细描述您的症状）',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: colorScheme.onBackground),
-            ),
-            const SizedBox(height: 8),
-            TextFormField(
-              controller: _chiefComplaintController,
-              maxLines: 20,
-              minLines: 20,
-              decoration: InputDecoration(
-                hintText: '请输入主诉内容',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                filled: true,
-                fillColor: colorScheme.background,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              ),
-              validator: (v) => v == null || v.isEmpty ? '请填写主诉内容' : null,
-            ),
-            const SizedBox(height: 16),
-
-            Row(
-              children: [
-                SizedBox(width: 40),
-                Expanded(
-                  flex: 1,
-                  child: Row(
-                    children: [
-                      Text(
-                        '日期:',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.onBackground,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: SizedBox(
-                          height: 48,
-                          child: OutlinedButton(
-                            onPressed: _pickDate,
-                            style: OutlinedButton.styleFrom(
-                              side: BorderSide(color: colorScheme.primary),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12)),
-                            ),
-                            child: Text(_selectedDate == null
-                                ? '请选择日期'
-                                : _selectedDate!
-                                    .toLocal()
-                                    .toString()
-                                    .split(' ')[0]),
-                          ),
-                        ),
-                      ),
-                    ],
+                  onChanged: (v) {
+                    setState(() => _selectedDepartmentId = v);
+                    if (v != null) _loadDoctors(v);
+                  },
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    hintText: '请选择科室',
                   ),
                 ),
-                SizedBox(width: 40),
-                Expanded(
-                  flex: 1,
-                  child: Row(
-                    children: [
-                      Text(
-                        '时间:',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.onBackground,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: InputDecorator(
-                          decoration: InputDecoration(
-                            border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12)),
-                            filled: true,
-                            fillColor: colorScheme.background,
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 4),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<int>(
-                              value: _selectedHour,
-                              hint: const Text('选择'),
-                              isExpanded: true,
-                              items: _hours
-                                  .map((h) => DropdownMenuItem(
-                                        value: h,
-                                        child: Text('$h:00'),
-                                      ))
-                                  .toList(),
-                              onChanged: (v) =>
-                                  setState(() => _selectedHour = v),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+
+          const SizedBox(height: 16),
+
+          /// 医生
+          const Text('选择医生', style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          _loadingDoctors
+              ? const Center(child: CircularProgressIndicator())
+              : DropdownButtonFormField<int>(
+                  value: _selectedDoctorId,
+                  items: _doctors
+                      .map((d) => DropdownMenuItem(
+                            value: d['id'] as int,
+                            child: Text(d['name']),
+                          ))
+                      .toList(),
+                  onChanged: (v) => setState(() => _selectedDoctorId = v),
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    hintText: '请选择医生',
                   ),
                 ),
-                SizedBox(width: 40),
-              ],
-            ),
 
-            const SizedBox(height: 32),
+          const SizedBox(height: 16),
 
-            // 提交按钮
-            ElevatedButton(
-              onPressed: _submit,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-                backgroundColor: colorScheme.primary,
-              ),
-              child: Text(
-                '提交预约',
-                style: TextStyle(fontSize: 16, color: colorScheme.onPrimary),
+          /// 主诉
+          const Text('主诉', style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          TextFormField(
+            controller: _chiefComplaintController,
+            minLines: 6,
+            maxLines: 6,
+            validator: (v) => v == null || v.isEmpty ? '请输入主诉' : null,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              hintText: '请描述症状',
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          /// 日期 + 时间
+          Row(children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _pickDate,
+                child: Text(_selectedDate == null
+                    ? '选择日期'
+                    : _selectedDate!.toString().split(' ')[0]),
               ),
             ),
-          ],
-        ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: DropdownButtonFormField<int>(
+                value: _selectedHour,
+                hint: const Text('时间'),
+                items: _hours
+                    .map(
+                        (h) => DropdownMenuItem(value: h, child: Text('$h:00')))
+                    .toList(),
+                onChanged: (v) => setState(() => _selectedHour = v),
+              ),
+            ),
+          ]),
+
+          const SizedBox(height: 24),
+
+          /// 提交
+          ElevatedButton(
+            onPressed: _submit,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: colorScheme.primary,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+            ),
+            child: Text('提交预约', style: TextStyle(color: colorScheme.onPrimary)),
+          ),
+        ]),
       ),
     );
   }

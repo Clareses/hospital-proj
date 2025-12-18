@@ -15,14 +15,19 @@ bp = Blueprint("record", __name__, url_prefix="/hospital")
 @login_required
 def add_record():
     data = request.json
-    dept = Department.query.filter_by(name=data["department"]).first()
+    dept_id = data["department_id"]
+    doc_id = data["doctor_id"]
+
     record = Record(
         patient_id=request.user["uid"],
-        department_id=dept.id,
+        doctor_id=doc_id,
+        department_id=dept_id,
         complaint=data["complaint"],
         visit_date=data["date"],
         progress="pending",
+        diagnosis="",
     )
+
     db.session.add(record)
     db.session.commit()
     return jsonify({"status": True})
@@ -31,34 +36,41 @@ def add_record():
 @bp.route("/records_list", methods=["GET"])
 @login_required
 def records_list():
-    data = request.json
-    tok = data["token"]
-    payload = verify_token(tok)
+    auth = request.headers.get("Authorization")
+    if not auth or not auth.startswith("Bearer "):
+        return jsonify({"status": False, "msg": "missing token"}), 401
+
+    token = auth[7:]
+    payload = verify_token(token)
     if not payload:
-        return jsonify({"status": False, "msg": "invalid token"})
+        return jsonify({"status": False, "msg": "invalid token"}), 401
 
     uid = payload["uid"]
     role = payload["role"]
 
-    if role == "doctor":
-        records = Record.query.filter(
-            Record.doctor_id == uid and Record.progress != "done"
-        ).all()
-        result = []
-        for r in records:
-            user = User.query.get(r.patient_id)
-            result.append({"name": user.name, "record_id": r.id})
-        return jsonify({"status": True, "data": result})
-    else:
-        return jsonify({"status": False})
+    if role != "doctor":
+        return jsonify({"status": False, "msg": "permission denied"}), 403
+
+    # 2. 注意：SQLAlchemy 不能用 Python 的 and
+    records = Record.query.filter(
+        Record.doctor_id == uid, Record.progress != "done"
+    ).all()
+
+    result = []
+    for r in records:
+        user = User.query.get(r.patient_id)
+        result.append({"name": user.name, "record_id": r.id})
+
+    return jsonify({"status": True, "data": result})
 
 
-@bp.route("/record", methods=["GET"])
+@bp.route("/record/<int:record_id>", methods=["GET"])
 @login_required
-def get_record():
-    id = request.json["record_id"]
-    print(id)
-    record = Record.query.get(id)
+def get_record(record_id):
+    record = Record.query.get(record_id)
+    if not record:
+        return jsonify({"status": False, "msg": "record not found"}), 404
+
     return jsonify({"status": True, "complaint": record.complaint})
 
 
@@ -83,56 +95,86 @@ def post_record():
 @bp.route("/current", methods=["GET"])
 @login_required
 def current():
-    record = (
-        Record.query.filter_by(patient_id=request.user["uid"])
-        .order_by(Record.id.desc())
-        .first()
-    )
-    dept = Department.query.get(record.department_id)
-    return jsonify(
-        {
-            "status": True,
-            "overview": record.complaint,
-            "time": record.visit_date,
-            "department": dept.name,
-            "progress": record.progress,
-        }
-    )
+    try:
+        uid = request.user["uid"]
+
+        record = (
+            Record.query.filter(
+                Record.patient_id == uid,
+                Record.progress != "done",
+            )
+            .order_by(Record.id.desc())
+            .first()
+        )
+
+        if not record:
+            return jsonify(
+                {"status": False, "msg": "no record"}
+            ), 200  # 返回 200 而不是 404
+
+        dept = Department.query.get(record.department_id)
+
+        return jsonify(
+            {
+                "status": True,
+                "overview": record.complaint,
+                "time": record.visit_date,
+                "department": dept.name if dept else None,
+                "progress": record.progress,
+            }
+        )
+    except Exception as e:
+        print(e)
+        return jsonify({"status": False, "msg": str(e)}), 200
 
 
 @bp.route("/records_history", methods=["GET"])
 @login_required
 def records_history():
-    data = request.json
-    tok = data["token"]
-    payload = verify_token(tok)
-    if not payload:
-        return jsonify({"status": False, "msg": "invalid token"})
+    uid = request.user["uid"]
+    role = request.user["role"]
 
-    uid = payload["uid"]
-    records = Record.query.filter(Record.patient_id == uid).all()
+    if role != "patient":
+        return jsonify({"status": False, "msg": "permission denied"}), 403
+
+    records = (
+        Record.query.filter(Record.patient_id == uid).order_by(Record.id.desc()).all()
+    )
+
     result = []
+
     for r in records:
+        # 查医生 → user
+        doctor = User.query.get(r.doctor_id)
+        doctor_user = User.query.get(doctor.id) if doctor else None
+
+        # 查科室
+        dept = Department.query.get(r.department_id)
+
+        # 查药品
         record_drugs = (
             db.session.query(RecordDrug, Drug)
             .join(Drug, RecordDrug.drug_id == Drug.id)
             .filter(RecordDrug.record_id == r.id)
             .all()
         )
-        user = User.query.get(r.doctor_id)
+
         result.append(
             {
-                "name": user.name,
+                "name": doctor_user.name if doctor_user else None,
                 "complaint": r.complaint,
+                "time": r.visit_date,
                 "diagnosis": r.diagnosis,
                 "progress": r.progress,
+                "department": dept.name if dept else None,
                 "drug": [
                     {
-                        "name": d[1].name,
-                        "amount": d[0].amount,
+                        "name": drug.name,
+                        "amount": rd.amount,
                     }
-                    for d in record_drugs
+                    for rd, drug in record_drugs
                 ],
             }
         )
+
     return jsonify({"status": True, "data": result})

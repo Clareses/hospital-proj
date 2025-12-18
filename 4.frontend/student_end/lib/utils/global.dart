@@ -11,10 +11,10 @@ class Global {
     _prefs = await SharedPreferences.getInstance();
   }
 
-
   static const String _keyIsLogin = 'is_login';
   static const String _keyUserId = 'user_id';
   static const String _keyUserName = 'user_name';
+  static const String _keyToken = 'token';
 
   bool get isLogin => _prefs.getBool(_keyIsLogin) ?? false;
 
@@ -42,6 +42,7 @@ class Global {
     }
   }
 
+  String? get token => _prefs.getString(_keyToken);
 
   Future<void> login({
     required String userId,
@@ -51,6 +52,7 @@ class Global {
     await _prefs.setBool(_keyIsLogin, true);
     await _prefs.setString(_keyUserId, userId);
     await _prefs.setString(_keyUserName, userName);
+    await _prefs.setString(_keyToken, token);
   }
 
   Future<void> logout() async {

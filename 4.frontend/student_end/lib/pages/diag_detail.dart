@@ -44,73 +44,147 @@ class HistoryDetailPage extends StatelessWidget {
     }
   }
 
+  Widget _section(String title, Widget child) {
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title,
+                style:
+                    const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(record.title),
-        backgroundColor: Colors.blueAccent,
+        title: const Text('诊断'),
+        backgroundColor: colorScheme.primary,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              record.title,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              record.time,
-              style: const TextStyle(fontSize: 14, color: Colors.black54),
-            ),
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: LinearProgressIndicator(
-                value: getProgressValue(record.status),
-                minHeight: 10,
-                backgroundColor: Colors.grey[200],
-                color: getStatusColor(record.status),
+            /// 标题区
+            Card(
+              elevation: 1,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    /// 诊断标题
+                    Text(
+                      record.diagnosis,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+
+                    /// 医生 / 科室名（小字）
+                    Text(
+                      '医生：${record.title}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.black54,
+                      ),
+                    ),
+
+                    const SizedBox(height: 4),
+                    Text(
+                      record.time,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Colors.black45,
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    /// 进度条
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: LinearProgressIndicator(
+                        value: getProgressValue(record.status),
+                        minHeight: 10,
+                        backgroundColor: Colors.grey[200],
+                        color: getStatusColor(record.status),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      getStatusText(record.status),
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: getStatusColor(record.status),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              getStatusText(record.status),
-              style:
-                  TextStyle(fontSize: 16, color: getStatusColor(record.status)),
-            ),
-            const SizedBox(height: 20),
-            const Text(
+
+            const SizedBox(height: 16),
+
+            /// 主诉
+            _section(
               '主诉',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              Text(
+                record.chiefComplaint,
+                style: const TextStyle(fontSize: 16),
+              ),
             ),
-            const SizedBox(height: 6),
-            Text(
-              record.chiefComplaint,
-              style: const TextStyle(fontSize: 16),
+
+            /// 诊断说明
+            _section(
+              '诊断结果',
+              Text(
+                record.diagnosis,
+                style: const TextStyle(fontSize: 16),
+              ),
             ),
-            const SizedBox(height: 16),
-            const Text(
-              '诊断',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              record.diagnosis,
-              style: const TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 16),
-            const Text(
+
+            /// 药物
+            _section(
               '药物清单',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              record.medications.isNotEmpty
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: record.medications
+                          .map(
+                            (m) => Padding(
+                              padding: const EdgeInsets.only(bottom: 6),
+                              child: Text(
+                                '• $m',
+                                style: const TextStyle(fontSize: 16),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    )
+                  : const Text(
+                      '无用药记录',
+                      style: TextStyle(fontSize: 15, color: Colors.black54),
+                    ),
             ),
-            const SizedBox(height: 6),
-            ...record.medications.map((m) => Text(
-                  '• $m',
-                  style: const TextStyle(fontSize: 16),
-                )),
           ],
         ),
       ),
