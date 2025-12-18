@@ -10,6 +10,8 @@ end
 function start_backend
     echo "Starting backend"
     cd 3.backend
+    mkdir instance
+    cp ../1.database/hospital.db ./instance/hospital.db
     uv run app.py &> .srv.log
     cd ..
 end
