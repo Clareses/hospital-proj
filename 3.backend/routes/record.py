@@ -6,6 +6,7 @@ from models.drug import Drug
 from models.user import User
 from models.department import Department
 from utils.decorators import login_required
+from utils.jwt import verify_token
 
 bp = Blueprint("record", __name__, url_prefix="/hospital")
 
@@ -30,18 +31,34 @@ def add_record():
 @bp.route("/records_list", methods=["GET"])
 @login_required
 def records_list():
-    records = Record.query.filter(Record.progress != "done").all()
-    result = []
-    for r in records:
-        user = User.query.get(r.patient_id)
-        result.append({"id": r.id, "name": user.name, "record_id": r.id})
-    return jsonify({"status": True, "data": result})
+    data = request.json
+    tok = data["token"]
+    payload = verify_token(tok)
+    if not payload:
+        return jsonify({"status": False, "msg": "invalid token"})
+
+    uid = payload["uid"]
+    role = payload["role"]
+
+    if role == "doctor":
+        records = Record.query.filter(
+            Record.doctor_id == uid and Record.progress != "done"
+        ).all()
+        result = []
+        for r in records:
+            user = User.query.get(r.patient_id)
+            result.append({"name": user.name, "record_id": r.id})
+        return jsonify({"status": True, "data": result})
+    else:
+        return jsonify({"status": False})
 
 
 @bp.route("/record", methods=["GET"])
 @login_required
 def get_record():
-    record = Record.query.get(request.args.get("record_id"))
+    id = request.json["record_id"]
+    print(id)
+    record = Record.query.get(id)
     return jsonify({"status": True, "complaint": record.complaint})
 
 
@@ -81,3 +98,41 @@ def current():
             "progress": record.progress,
         }
     )
+
+
+@bp.route("/records_history", methods=["GET"])
+@login_required
+def records_history():
+    data = request.json
+    tok = data["token"]
+    payload = verify_token(tok)
+    if not payload:
+        return jsonify({"status": False, "msg": "invalid token"})
+
+    uid = payload["uid"]
+    records = Record.query.filter(Record.patient_id == uid).all()
+    result = []
+    for r in records:
+        record_drugs = (
+            db.session.query(RecordDrug, Drug)
+            .join(Drug, RecordDrug.drug_id == Drug.id)
+            .filter(RecordDrug.record_id == r.id)
+            .all()
+        )
+        user = User.query.get(r.doctor_id)
+        result.append(
+            {
+                "name": user.name,
+                "complaint": r.complaint,
+                "diagnosis": r.diagnosis,
+                "progress": r.progress,
+                "drug": [
+                    {
+                        "name": d[1].name,
+                        "amount": d[0].amount,
+                    }
+                    for d in record_drugs
+                ],
+            }
+        )
+    return jsonify({"status": True, "data": result})

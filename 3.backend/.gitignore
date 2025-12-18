@@ -8,3 +8,9 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Flask
+instance/
+
+# database
+*.db

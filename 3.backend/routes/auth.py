@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from extensions import db
 from models.user import User
-from utils.jwt import generate_token
+from utils.jwt import generate_token, verify_token
 
 bp = Blueprint("auth", __name__, url_prefix="/hospital")
 
@@ -12,6 +12,8 @@ def login():
     user = User.query.filter_by(phone=data["phone"], password=data["password"]).first()
     if not user:
         return jsonify({"status": False})
+
+    print(user)
 
     token = generate_token(user.id, user.role)
     return jsonify({"status": True, "token": token})
