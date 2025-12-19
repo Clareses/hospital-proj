@@ -16,7 +16,9 @@ def login():
     print(user)
 
     token = generate_token(user.id, user.role)
-    return jsonify({"status": True, "token": token, "name": user.name})
+    return jsonify(
+        {"status": True, "token": token, "name": user.name, "role": user.role}
+    )
 
 
 @bp.route("/register", methods=["POST"])

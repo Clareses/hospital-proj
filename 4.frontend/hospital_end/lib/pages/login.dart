@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hospital_end/pages/admin/home.dart';
+import 'package:hospital_end/utils/api.dart';
 import 'package:hospital_end/utils/global.dart';
 import 'package:hospital_end/pages/doctor/home.dart';
 
@@ -24,12 +25,14 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  /// 假装网络请求
-  Future<bool> _fakeLoginRequest(String phone, String password) async {
-    await Future.delayed(const Duration(seconds: 2));
-
-    /// 你可以改成任何逻辑
-    return phone == '13800000000' && password == '123456';
+  Future<(bool, String, String, String)> _loginRequest(
+      String phone, String password) async {
+    var ret = await Api.login(phone, password);
+    var status = ret['status'] as bool;
+    var token = ret['token'] as String;
+    var name = ret['name'] as String;
+    var role = ret['role'] as String;
+    return (status, token, name, role);
   }
 
   Future<void> _onLogin() async {
@@ -43,15 +46,15 @@ class _LoginPageState extends State<LoginPage> {
 
     setState(() => _loading = true);
 
-    final success = await _fakeLoginRequest(phone, password);
+    final (success, tok, name, role) = await _loginRequest(phone, password);
 
     setState(() => _loading = false);
 
-    if (success) {
+    if (success && (role == "doctor" || role == "admin")) {
       await Global().login(
         userId: phone,
         userName: phone,
-        token: 'fake_token_${DateTime.now().millisecondsSinceEpoch}',
+        token: tok,
       );
 
       _showMessage('登录成功');
@@ -59,7 +62,8 @@ class _LoginPageState extends State<LoginPage> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => const DoctorHomePage(),
+          builder: (context) =>
+              role == "doctor" ? const DoctorHomePage() : const AdminHomePage(),
         ),
       );
     } else {

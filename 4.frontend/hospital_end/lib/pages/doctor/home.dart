@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:hospital_end/utils/api.dart';
+import 'package:hospital_end/utils/global.dart';
 import 'package:hospital_end/utils/models.dart';
 
 enum PageType { current, history }
@@ -53,8 +55,8 @@ class TopBar extends StatelessWidget {
       color: Theme.of(context).colorScheme.primaryContainer,
       child: Row(
         children: [
-          const Text(
-            '张医生  |  心内科',
+          Text(
+            Global().userName!,
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
           const Spacer(),
@@ -108,59 +110,81 @@ class CurrentConsultationPage extends StatefulWidget {
 }
 
 class _CurrentConsultationPageState extends State<CurrentConsultationPage> {
-  final List<Patient> _patients = List.generate(
-    5,
-    (i) => Patient('患者$i', 30 + i, '头痛、乏力'),
-  );
+  int? _selectedIndex;
+  late Future<List<Map<String, dynamic>>> _futureRecords;
 
-  Patient? _selected;
+  @override
+  void initState() {
+    super.initState();
+    _futureRecords = _loadRecords();
+  }
+
+  Future<List<Map<String, dynamic>>> _loadRecords() async {
+    final res = await Api.recordsList(Global().token!);
+    return List<Map<String, dynamic>>.from(res['data'] ?? []);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        // 左侧列表
-        SizedBox(
-          width: 280,
-          child: ListView.builder(
-            itemCount: _patients.length,
-            itemBuilder: (context, index) {
-              final p = _patients[index];
-              return ListTile(
-                title: Text(p.name),
-                subtitle: Text('年龄：${p.age}'),
-                selected: _selected == p,
-                onTap: () => setState(() => _selected = p),
-              );
-            },
-          ),
-        ),
-        const VerticalDivider(width: 1),
-        // 右侧详情
-        Expanded(
-          child: _selected == null
-              ? const Center(child: Text('请选择患者'))
-              : ConsultationDetail(
-                  patient: _selected!,
-                  onSubmit: () {
-                    setState(() {
-                      _patients.remove(_selected);
-                      _selected = null;
-                    });
-                  },
-                ),
-        ),
-      ],
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _futureRecords,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final records = snapshot.data!;
+
+        return Row(
+          children: [
+            // ===== 左侧患者列表 =====
+            SizedBox(
+              width: 280,
+              child: ListView.builder(
+                itemCount: records.length,
+                itemBuilder: (context, index) {
+                  final item = records[index];
+                  return ListTile(
+                    title: Text(item['name']),
+                    selected: _selectedIndex == index,
+                    onTap: () => setState(() => _selectedIndex = index),
+                  );
+                },
+              ),
+            ),
+
+            const VerticalDivider(width: 1),
+
+            // ===== 右侧详情 =====
+            Expanded(
+              child: _selectedIndex == null
+                  ? const Center(child: Text('请选择患者'))
+                  : ConsultationDetail(
+                      recordId: records[_selectedIndex!]['record_id'],
+                      onSubmit: () {
+                        setState(() {
+                          records.removeAt(_selectedIndex!);
+                          _selectedIndex = null;
+                        });
+                      },
+                    ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
 class ConsultationDetail extends StatelessWidget {
-  final Patient patient;
+  final int recordId;
   final VoidCallback onSubmit;
 
-  const ConsultationDetail(
-      {super.key, required this.patient, required this.onSubmit});
+  const ConsultationDetail({
+    super.key,
+    required this.recordId,
+    required this.onSubmit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -168,20 +192,40 @@ class ConsultationDetail extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
+          // ===== 主诉 =====
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('主诉：',
                       style: TextStyle(fontWeight: FontWeight.bold)),
-                  Expanded(child: Text(patient.complaint)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FutureBuilder<Map<String, dynamic>>(
+                      future: Api.getRecord(recordId, Global().token!),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) {
+                          return const CircularProgressIndicator();
+                        }
+                        return Text(snapshot.data!['complaint'] ?? '');
+                      },
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 16),
-          Expanded(child: DiagnosisForm(onSubmit: onSubmit)),
+
+          // ===== 诊断表单 =====
+          Expanded(
+            child: DiagnosisForm(
+              recordId: recordId,
+              onSubmit: onSubmit,
+            ),
+          ),
         ],
       ),
     );
@@ -189,8 +233,14 @@ class ConsultationDetail extends StatelessWidget {
 }
 
 class DiagnosisForm extends StatefulWidget {
+  final int recordId;
   final VoidCallback onSubmit;
-  const DiagnosisForm({super.key, required this.onSubmit});
+
+  const DiagnosisForm({
+    super.key,
+    required this.recordId,
+    required this.onSubmit,
+  });
 
   @override
   State<DiagnosisForm> createState() => _DiagnosisFormState();
@@ -198,59 +248,125 @@ class DiagnosisForm extends StatefulWidget {
 
 class _DiagnosisFormState extends State<DiagnosisForm> {
   final _diagnosisCtrl = TextEditingController();
-  String? _drug;
   final _countCtrl = TextEditingController();
-  final _remarkCtrl = TextEditingController();
 
-  final List<String> _drugs = ['阿司匹林', '布洛芬', '对乙酰氨基酚'];
+  String? _selectedDrugId;
+
+  late final Future<List<String>> _futureDrugs;
+
+  @override
+  void initState() {
+    super.initState();
+    _futureDrugs = _loadDrugs();
+  }
+
+  Future<List<String>> _loadDrugs() async {
+    final res = await Api.drugList();
+    List<String> ret = [];
+    for (var item in res["data"]) {
+      ret.add(item["name"]);
+    }
+    return ret;
+  }
+
+  Future<void> _submit(List<String> drugs) async {
+    if (_selectedDrugId == null) return;
+
+    final drug = drugs.firstWhere((d) => d == _selectedDrugId);
+
+    final res = await Api.postRecord(
+      Global().token!,
+      widget.recordId,
+      _diagnosisCtrl.text,
+      [
+        {
+          'name': drug,
+          'amount': 1,
+        }
+      ],
+    );
+
+    if (res['status'] == true) {
+      widget.onSubmit();
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('提交成功')));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: _diagnosisCtrl,
-              decoration: const InputDecoration(labelText: '诊断结论'),
+    return FutureBuilder<List<String>>(
+      future: _futureDrugs,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
             ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: _drug,
-              items: _drugs
-                  .map((d) => DropdownMenuItem(value: d, child: Text(d)))
-                  .toList(),
-              onChanged: (v) => setState(() => _drug = v),
-              decoration: const InputDecoration(labelText: '选择药品'),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('加载药品失败：${snapshot.error}'),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _countCtrl,
-              decoration: const InputDecoration(labelText: '数量'),
+          );
+        }
+
+        final drugs = snapshot.data!;
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _diagnosisCtrl,
+                  decoration: const InputDecoration(labelText: '诊断结论'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: _selectedDrugId,
+                  decoration: const InputDecoration(labelText: '选择药品'),
+                  items: drugs
+                      .map(
+                        (d) => DropdownMenuItem<String>(
+                          value: d,
+                          child: Text(d),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (v) => setState(() => _selectedDrugId = v),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _countCtrl,
+                  decoration: const InputDecoration(labelText: '数量'),
+                  keyboardType: TextInputType.number,
+                ),
+                const Spacer(),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: ElevatedButton(
+                    onPressed: () => _submit(drugs),
+                    child: const Text('提交诊断'),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _remarkCtrl,
-              decoration: const InputDecoration(labelText: '备注'),
-            ),
-            const Spacer(),
-            Align(
-              alignment: Alignment.centerRight,
-              child: ElevatedButton(
-                onPressed: widget.onSubmit,
-                child: const Text('提交诊断'),
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
 
-// ================= 历史问诊 =================
 class HistoryConsultationPage extends StatefulWidget {
   const HistoryConsultationPage({super.key});
 
@@ -260,62 +376,156 @@ class HistoryConsultationPage extends StatefulWidget {
 }
 
 class _HistoryConsultationPageState extends State<HistoryConsultationPage> {
-  final List<Patient> _all = List.generate(
-    8,
-    (i) => Patient('历史患者$i', 40 + i, '既往主诉'),
-  );
+  late final Future<List<Map<String, dynamic>>> _futureHistory;
 
   String _keyword = '';
-  Patient? _selected;
+  Map<String, dynamic>? _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _futureHistory = _loadHistory();
+  }
+
+  Future<List<Map<String, dynamic>>> _loadHistory() async {
+    final res = await Api.recordsHistory(Global().token!);
+    return List<Map<String, dynamic>>.from(res['data'] ?? []);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _all.where((p) => p.name.contains(_keyword)).toList();
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _futureHistory,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-    return Row(
-      children: [
-        SizedBox(
-          width: 280,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(8),
-                child: TextField(
-                  decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.search), hintText: '搜索患者'),
-                  onChanged: (v) => setState(() => _keyword = v),
-                ),
+        if (snapshot.hasError) {
+          return Center(child: Text('加载失败：${snapshot.error}'));
+        }
+
+        final all = snapshot.data!;
+        final filtered =
+            all.where((e) => (e['name'] as String).contains(_keyword)).toList();
+
+        return Row(
+          children: [
+            // ================= 左侧列表 =================
+            SizedBox(
+              width: 280,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: TextField(
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.search),
+                        hintText: '搜索患者',
+                      ),
+                      onChanged: (v) => setState(() => _keyword = v),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: filtered.length,
+                      itemBuilder: (context, i) {
+                        final item = filtered[i];
+                        return ListTile(
+                          title: Text(item['complaint']),
+                          subtitle: Text(item['department'] ?? ''),
+                          selected: _selected == item,
+                          onTap: () => setState(() => _selected = item),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: filtered.length,
-                  itemBuilder: (context, i) {
-                    final p = filtered[i];
-                    return ListTile(
-                      title: Text(p.name),
-                      onTap: () => setState(() => _selected = p),
-                    );
-                  },
+            ),
+
+            const VerticalDivider(width: 1),
+
+            // ================= 右侧详情 =================
+            Expanded(
+              child: _selected == null
+                  ? const Center(child: Text('请选择历史记录'))
+                  : _HistoryDetail(data: _selected!),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _HistoryDetail extends StatelessWidget {
+  final Map<String, dynamic> data;
+
+  const _HistoryDetail({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final drugs = List<Map<String, dynamic>>.from(data['drug'] ?? []);
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Card(
+        elevation: 2,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                data['complaint'],
+                style:
+                    const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '${data['department']}  ·  ${data['time']}',
+                style: const TextStyle(color: Colors.black54),
+              ),
+              const Divider(height: 32),
+              const Text(
+                '主诉',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              Text(data['complaint'] ?? ''),
+              const SizedBox(height: 16),
+              const Text(
+                '诊断',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              Text(data['diagnosis'] ?? ''),
+              const SizedBox(height: 16),
+              const Text(
+                '用药',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              if (drugs.isEmpty)
+                const Text('无')
+              else
+                ...drugs.map(
+                  (d) => Text(
+                    '• ${d['name']} × ${d['amount']}',
+                  ),
+                ),
+              const Spacer(),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Chip(
+                  label: Text(data['progress']),
                 ),
               ),
             ],
           ),
         ),
-        const VerticalDivider(width: 1),
-        Expanded(
-          child: _selected == null
-              ? const Center(child: Text('请选择历史记录'))
-              : Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text('这里展示 ${_selected!.name} 的历史诊断详情'),
-                    ),
-                  ),
-                ),
-        ),
-      ],
+      ),
     );
   }
 }

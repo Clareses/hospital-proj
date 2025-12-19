@@ -19,8 +19,7 @@ class Api {
     return jsonDecode(response.body);
   }
 
-  static Future<Map<String, dynamic>> _get(String path,
-      {String? token}) async {
+  static Future<Map<String, dynamic>> _get(String path, {String? token}) async {
     final response = await http.get(
       Uri.parse('$baseUrl$path'),
       headers: {
@@ -61,14 +60,17 @@ class Api {
   // =====================================
   // 4. 添加医生
   // =====================================
-  static Future<Map<String, dynamic>> addDoctor(
-      String token, String name, String phone, String department, String password) async {
-    return _post('/hospital/add_doctor', {
-      'name': name,
-      'phone': phone,
-      'department': department,
-      'password': password,
-    }, token: token);
+  static Future<Map<String, dynamic>> addDoctor(String token, String name,
+      String phone, String department, String password) async {
+    return _post(
+        '/hospital/add_doctor',
+        {
+          'name': name,
+          'phone': phone,
+          'department': department,
+          'password': password,
+        },
+        token: token);
   }
 
   // =====================================
@@ -111,20 +113,24 @@ class Api {
   // =====================================
   // 10. 获取单条就诊记录
   // =====================================
-  static Future<Map<String, dynamic>> getRecord(int recordId, String token) async {
+  static Future<Map<String, dynamic>> getRecord(
+      int recordId, String token) async {
     return _get('/hospital/record/$recordId', token: token);
   }
 
   // =====================================
   // 11. 提交诊断
   // =====================================
-  static Future<Map<String, dynamic>> postRecord(
-      String token, int recordId, String diagnosis, List<Map<String, dynamic>> drugs) async {
-    return _post('/hospital/record', {
-      'record_id': recordId,
-      'diagnosis': diagnosis,
-      'drug': drugs,
-    }, token: token);
+  static Future<Map<String, dynamic>> postRecord(String token, int recordId,
+      String diagnosis, List<Map<String, dynamic>> drugs) async {
+    return _post(
+        '/hospital/record',
+        {
+          'record_id': recordId,
+          'diagnosis': diagnosis,
+          'drug': drugs,
+        },
+        token: token);
   }
 
   // =====================================
@@ -137,13 +143,24 @@ class Api {
   // =====================================
   // 13. 添加就诊记录
   // =====================================
+  /// 新增就诊记录
   static Future<Map<String, dynamic>> addRecord(
-      String token, String department, String complaint, String date) async {
-    return _post('/hospital/add_record', {
-      'department': department,
-      'complaint': complaint,
-      'date': date,
-    }, token: token);
+    String token, {
+    required int departmentId,
+    required int doctorId,
+    required String complaint,
+    required String date,
+  }) async {
+    return _post(
+      '/hospital/add_record',
+      {
+        'department_id': departmentId,
+        'doctor_id': doctorId,
+        'complaint': complaint,
+        'date': date,
+      },
+      token: token,
+    );
   }
 
   // =====================================
@@ -151,5 +168,19 @@ class Api {
   // =====================================
   static Future<Map<String, dynamic>> current(String token) async {
     return _get('/hospital/current', token: token);
+  }
+
+  /// 获取所有科室
+  static Future<List<Map<String, dynamic>>> departments() async {
+    final res = await _get('/hospital/departments');
+    return List<Map<String, dynamic>>.from(res['data'] ?? []);
+  }
+
+  /// 根据科室 ID 获取医生列表
+  static Future<List<Map<String, dynamic>>> doctorsByDepartment(
+    int departmentId,
+  ) async {
+    final res = await _get('/hospital/doctors/$departmentId');
+    return List<Map<String, dynamic>>.from(res['data'] ?? []);
   }
 }

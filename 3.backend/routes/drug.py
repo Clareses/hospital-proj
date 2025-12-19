@@ -9,7 +9,9 @@ bp = Blueprint("drug", __name__, url_prefix="/hospital")
 @bp.route("/drug_list", methods=["GET"])
 def drug_list():
     drugs = Drug.query.all()
-    return jsonify([{"id": d.id, "name": d.name, "amount": d.amount} for d in drugs])
+    return jsonify(
+        {"data": [{"id": d.id, "name": d.name, "amount": d.amount} for d in drugs]}
+    )
 
 
 @bp.route("/add_drug", methods=["POST"])

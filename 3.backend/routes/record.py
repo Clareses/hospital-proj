@@ -134,12 +134,18 @@ def records_history():
     uid = request.user["uid"]
     role = request.user["role"]
 
-    if role != "patient":
-        return jsonify({"status": False, "msg": "permission denied"}), 403
-
-    records = (
-        Record.query.filter(Record.patient_id == uid).order_by(Record.id.desc()).all()
-    )
+    if role == "patient":
+        records = (
+            Record.query.filter(Record.patient_id == uid)
+            .order_by(Record.id.desc())
+            .all()
+        )
+    else:
+        records = (
+            Record.query.filter(Record.doctor_id == uid)
+            .order_by(Record.id.desc())
+            .all()
+        )
 
     result = []
 
